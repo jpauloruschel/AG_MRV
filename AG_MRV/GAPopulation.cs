@@ -20,6 +20,7 @@ namespace AG_MRV
             bestSolution = null;
             m_length = size;
             generation = new GAGenome[m_length];
+            bestSolution = null;
 
             Console.WriteLine("Creating Initial Population");
 
@@ -27,8 +28,10 @@ namespace AG_MRV
             {
                 Console.Write("  +" + (i + 1) + ": ");
                 generation[i] = new GAGenome(GeneticAlgorithm.genome_size, createGenes);
+                Program.current_iteration.mean_initial_population_value += generation[i].value;
                 Console.WriteLine(generation[i].value);
             }
+            Program.current_iteration.mean_initial_population_value = Program.current_iteration.mean_initial_population_value / (float)m_length;
         }
 
         /** Creates a new generation. Applies:
@@ -37,18 +40,25 @@ namespace AG_MRV
             * Mutation */
         public static void CreateNewGeneration()
         {
+            GeneticAlgorithm.ShellSort(ref generation);
+
             // Gets the parents
             GAGenome[] parents = rouletteSelection();
 
             // Reproduction (Crossover)
             GAGenome[] children = crossOver(parents);
 
-            // Joins both lists as new generation, with mutation
-            generation = new GAGenome[parents.Length + children.Length];
+            // Elite children (best)
+            GAGenome[] eliteChildren = new GAGenome[GeneticAlgorithm.elite_child_count];
+            for (int i = 0; i < GeneticAlgorithm.elite_child_count; i++)
+                eliteChildren[i] = generation[i];
+            //Console.Write("");
+            // Joins both lists as new generation, with mutation on both
+            generation = new GAGenome[children.Length + eliteChildren.Length];
             int it = 0;
-            for (it = 0; it < parents.Length; it++)
+            for (it = 0; it < eliteChildren.Length; it++)
             {
-                generation[it] = parents[it];
+                generation[it] = eliteChildren[it];
                 generation[it].mutate();
             }
             for (int j = 0; j < children.Length; j++)
@@ -65,16 +75,17 @@ namespace AG_MRV
         }
 
         /** Roulette Selection
-         * by default, this selects 50% of the population */
+         * by default, this selects population-elite. */
         private static GAGenome[] rouletteSelection()
         {
             // Initialize counters and result
-            GAGenome[] result = new GAGenome[m_length / 2];
+            int new_parents_count = m_length - GeneticAlgorithm.elite_child_count;
+            GAGenome[] result = new GAGenome[new_parents_count];
+            List<int> chosen_ones = new List<int>();
             double[] probability = new double[m_length];
             int[] values = new int[m_length];
             double prob_sum = 0;
             int sum = 0;
-            int r_current = 0;
 
             for (int i = 0; i < m_length; i++)
             {
@@ -84,25 +95,34 @@ namespace AG_MRV
             for (int i = 0; i < m_length; i++)
             {
                 probability[i] = prob_sum + ((double)(sum-values[i]) / (double)sum);
-                prob_sum += probability[i];
+                prob_sum += probability[i] - prob_sum;
                 //Console.WriteLine("Fitness: " + values[i] + "; Probability: " + ((double)(sum - values[i]) / sum));
             }
-    
-            // Chose m_length/2 random numbers between 0 and r_current
+
+            // Chose new_parents_count random genomes
             double random_f;
-            for (int i = 0; i < m_length / 2; i++)
+            for (int i = 0; i < new_parents_count; i++)
             {
-                random_f = (GeneticAlgorithm.random_factory.NextDouble());
-                
+                int j;
+                do
+                {
+                    random_f = (GeneticAlgorithm.random_factory.NextDouble() * prob_sum);
+
+                    for (j = 1; j < m_length; j++)
+                        if (probability[j] > random_f) 
+                            break;
+                } while (chosen_ones.Contains(j-1));
+                /*
                 int j = 1;
                 while (j < m_length)
                 {
-                    if (probability[j] <= random_f)
+                    if (probability[j] > random_f)
                         break;
                     j++;
-                }
-                result[r_current] = generation[j - 1];
-                r_current++;
+                }*/
+               // Console.WriteLine("random_f: " + random_f + "; chose: " + (j-1));
+                chosen_ones.Add(j-1);
+                result[i] = generation[j - 1];
             }
 
             // Return the result
@@ -111,13 +131,15 @@ namespace AG_MRV
 
         /** Crossover (reproduction)
          * Algorithm: Modified 2-Point Crossover
-         *    Also known as Ordered Crossover Operation */
+         *    Also known as Ordered Crossover Operation
+         * It generates the same number of parents*/
         private static GAGenome[] crossOver(GAGenome[] parents)
         {
-            GAGenome[] result = new GAGenome[m_length / 2];
+            int child_count = parents.Length;
+            GAGenome[] result = new GAGenome[child_count];
             int r_current = 0;
 
-            for (int i = 0; i < m_length / 4; i++ )
+            for (int i = 0; i < child_count / 2; i++)
             {
                 // New Children - copy of each parent
                 GAGenome newG1, newG2;
@@ -125,18 +147,18 @@ namespace AG_MRV
                 // Crossover
                 do {
                     newG1 = new GAGenome(parents[i]);
-                    newG2 = new GAGenome(parents[i + (m_length / 4)]);
+                    newG2 = new GAGenome(parents[i + (child_count / 2)]);
                     // Select points
                     int p1 = (GeneticAlgorithm.random_factory.Next(0, GeneticAlgorithm.genome_size-1));
                     int p2 = (GeneticAlgorithm.random_factory.Next(p1, GeneticAlgorithm.genome_size));
 
                     // Change
-                    for (int j = p1; j < p2; j++)
+                    for (int j = p1; j <= p2; j++)
                     {
-                        if (!newG2.containsGene(parents[i].genes[p1]))
-                            newG2.genes[p1] = parents[i].genes[p1];
-                        if (!newG1.containsGene(parents[i + (m_length / 4)].genes[p1]))
-                            newG1.genes[p1] = parents[i + (m_length / 4)].genes[p1];
+                        if (!newG2.containsGene(parents[i].genes[j]))
+                            newG2.genes[j] = parents[i].genes[j];
+                        if (!newG1.containsGene(parents[i + (child_count / 2)].genes[j]))
+                            newG1.genes[j] = parents[i + (child_count / 2)].genes[j];
                     }
                 } while((!newG1.updateValue()) || (!newG2.updateValue()));
 
@@ -144,6 +166,13 @@ namespace AG_MRV
                 result[r_current] = newG1;
                 result[r_current+1] = newG2;
                 r_current += 2;
+            }
+            // If the last Genome is null, then it was an odd number.
+            // Use a mutation of the best
+            if (result[child_count - 1] == null)
+            {
+                result[child_count - 1] = new GAGenome(getBestEver());
+                result[child_count - 1].mutate();
             }
 
             return result;

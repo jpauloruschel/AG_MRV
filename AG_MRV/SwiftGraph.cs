@@ -31,16 +31,40 @@ namespace AG_MRV
     {
         public int c_index;                 // the current walk index - used for building
         public List<int> edges;             // list of all edges (by index)
+        public int cost;                    // cost per edge
         public SWPath(int c_index)
         {
             this.c_index = c_index;
             edges = new List<int>();
+            cost = 0;
         }
         public SWPath(int c_index, List<int> parentEdges, int newEdge)
         {
             this.c_index = c_index;
             edges = new List<int>(parentEdges);
             edges.Add(newEdge);
+            cost = 0;
+        }
+
+        public SWPath(SWPath visiting, int cost)
+        {
+            this.c_index = visiting.c_index;
+            this.edges = new List<int>(visiting.edges);
+            this.cost = cost;
+        }
+    }
+
+    // A Edge -> Edge Mapping
+    struct SWMapping
+    {
+        public List<SWPath> paths;
+        public int demand_to_go;
+        public int edge_count;
+        public SWMapping(int demand_to_go)
+        {
+            paths = new List<SWPath>();
+            this.demand_to_go = demand_to_go;
+            edge_count = 0;
         }
     }
 
@@ -132,23 +156,27 @@ namespace AG_MRV
             return e_count - 1;
         }
 
-        // Finds a path between the nodes n1 and n2.
+        // Finds a Mapping between the nodes n1 and n2.
         //   RESTRICTION: sum of all virtual links hosted by a physical edge
         //      must not exceed its limit.
-        //   This restriction is satisfied via edgeAccumulator and maxEdgeWeight
+        //   This restriction is satisfied via edgeAccumulator and pathWeight
         //      edgeAccumulator is a list of the value already used of each edge
         //      pathWeight is the weight of the path
         // This is a naive algorithm that looks for the shortest path.
-        // Returns the path from n1 to n2.
-        public SWPath findPathBetween(int n1, int n2, ref int[] edgeAccumulator, int pathWeight)
+        // Returns a mapping (all paths that map)
+        public SWMapping findMapBetween(int n1, int n2, ref int[] edgeAccumulator, int pathWeight)
         {
-            if (paths[n1, n2].edges != null)
-                return paths[n1, n2];
+            SWMapping map = new SWMapping(pathWeight);
 
             List<SWPath> toVisit = new List<SWPath>();
             List<SWPath> newVisit = new List<SWPath>();
             List<SWPath> visited = new List<SWPath>();
-            newVisit.Add(new SWPath(n1));
+
+            // Add to visit all nodes adjacent to n1
+            for (int i = 0; i < nodes[n1].edges.Count(); i++)
+                for (int j = 0; j < edges[nodes[n1].edges[i]].nodes.Length; j++ )
+                    if (edges[nodes[n1].edges[i]].nodes[j] != n1)
+                        newVisit.Add(new SWPath(edges[nodes[n1].edges[i]].nodes[j]));
 
             // Iterative Depth-search
             do {
@@ -160,34 +188,65 @@ namespace AG_MRV
                 // Foreach path to visit
                 foreach (SWPath visiting in toVisit)
                 {
-                    // If the visiting index is equal to the desination, found the path!
+                    // If the visiting index is equal to the desination, found a path
                     if (n2 == visiting.c_index)
                     {
-                        paths[n1, n2] = visiting;
-                        paths[n2, n1] = visiting;
-                        return visiting;
+                        // Calculates the demand that this path covers
+                        int lowest = Int16.MaxValue;
+                        for (int i = 0; i < visiting.edges.Count(); i++)
+                            if (edges[visiting.edges[i]].weight < lowest)
+                                lowest = edges[visiting.edges[i]].weight;
+                        
+                        int v = Math.Min(lowest, map.demand_to_go);
+                        if (visiting.edges != null && visiting.edges.Count > 0)
+                        {
+                            map.paths.Add(new SWPath(visiting, v));
+                            map.demand_to_go -= v;
+                            map.edge_count += visiting.edges.Count();
+                            for (int j = 0; j < visiting.edges.Count(); j++)
+                                edgeAccumulator[visiting.edges[j]] += v;
+
+                            // Check if done
+                            if (map.demand_to_go == 0)
+                                return map;
+
+                            // Add to visit all nodes adjacent to n1
+                            newVisit.Clear();
+                            visited.Clear();
+                            toVisit.Clear();
+                            for (int i = 0; i < nodes[n1].edges.Count(); i++)
+                                if (edgeAccumulator[nodes[n1].edges[i]] < edges[nodes[n1].edges[i]].weight)
+                                    for (int j = 0; j < edges[nodes[n1].edges[i]].nodes.Length; j++)
+                                        if (edges[nodes[n1].edges[i]].nodes[j] != n1)
+                                            newVisit.Add(new SWPath(edges[nodes[n1].edges[i]].nodes[j]));
+                            break;
+                        }
                     }
+
                     // For each edge of the last vertex of the path
                     for (int edge = 0; edge < nodes[visiting.c_index].edges.Count; edge++)
                     {
-                        // For each vertex of this edge
-                        for (int j = 0; j < edges[nodes[visiting.c_index].edges[edge]].nodes.Length; j++)
+                       // if (edgeAccumulator[nodes[visiting.c_index].edges[edge]] != 0)
+                       // GeneticAlgorithm.Write(edgeAccumulator[nodes[visiting.c_index].edges[edge]] + " + " + pathWeight + " <= " + edges[nodes[visiting.c_index].edges[edge]].weight);
+                        if (edgeAccumulator[nodes[visiting.c_index].edges[edge]] < edges[nodes[visiting.c_index].edges[edge]].weight) // if it can do at least 1
                         {
-                            // If not the original vertex
-                            if (edges[nodes[visiting.c_index].edges[edge]].nodes[j] != visiting.c_index)
+                            // For each vertex of this edge
+                            for (int j = 0; j < edges[nodes[visiting.c_index].edges[edge]].nodes.Length; j++)
                             {
-                                // If not already visited, consider it to be visited next iteration
-                                if (!indexInPathList(newVisit, edges[nodes[visiting.c_index].edges[edge]].nodes[j]) &&
-                                    (!indexInPathList(visited, edges[nodes[visiting.c_index].edges[edge]].nodes[j])))
+                                // If not the original vertex
+                                if (edges[nodes[visiting.c_index].edges[edge]].nodes[j] != visiting.c_index)
                                 {
-                                    //GeneticAlgorithm.WriteAndWait(edgeAccumulator[nodes[visiting.c_index].edges[edge]] + " + " + pathWeight + " <= " + edges[nodes[visiting.c_index].edges[edge]].weight);
-                                    if (edgeAccumulator[nodes[visiting.c_index].edges[edge]] + pathWeight <= edges[nodes[visiting.c_index].edges[edge]].weight)
+                                    // If not already visited, consider it to be visited next iteration
+                                    if (!indexInPathList(newVisit, edges[nodes[visiting.c_index].edges[edge]].nodes[j]) &&
+                                        (!indexInPathList(visited, edges[nodes[visiting.c_index].edges[edge]].nodes[j])))
                                     {
-                                        edgeAccumulator[nodes[visiting.c_index].edges[edge]] += pathWeight;
+                                        //edgeAccumulator[nodes[visiting.c_index].edges[edge]] += pathWeight;
+                                        //visited_edges.Add(nodes[visiting.c_index].edges[edge]);
                                         newVisit.Add(new SWPath(
                                             edges[nodes[visiting.c_index].edges[edge]].nodes[j], visiting.edges, nodes[visiting.c_index].edges[edge]));
                                     }
                                 }
+
                             }
                         }
                     }
@@ -195,21 +254,52 @@ namespace AG_MRV
                 foreach (SWPath i in toVisit)
                     visited.Add(i);
                 toVisit.Clear();
-            } while ((newVisit.Count > 0));
+            } while (newVisit.Count > 0);
 
+            //for (int i = 0; i < visited_edges.Count(); i++)
+            //    edgeAccumulator[visited_edges[i]] -= pathWeight;
             //GeneticAlgorithm.WriteAndWait("\nError finding path from node (" + n1 + ") to node (" + n2 + ")\n  Visited: " + visited.Count());
-            return new SWPath();
+            return new SWMapping(1);
+        }
+        // Returns true if the passed Path is valid
+        private bool IsAValidPath(SWPath path, ref int[] edgeAccumulator, int pathWeight)
+        {
+            // Check if using this path doesn't blow things up
+            bool usable = true;
+            for (int i = 0; i < path.edges.Count; i++)
+                if ((edgeAccumulator[path.edges[i]] + pathWeight) > edges[path.edges[i]].weight)
+                    return false;
+            return usable;
+        }
+        private bool IsAValidPath(SWPath path, ref int[] edgeAccumulator, int pathWeight, out int badEdge)
+        {
+            // Check if using this path doesn't blow things up
+            bool usable = true;
+            badEdge = -1;
+            for (int i = 0; i < path.edges.Count; i++)
+                if (edgeAccumulator[path.edges[i]] + pathWeight > edges[path.edges[i]].weight)
+                {
+                    usable = false;
+                    badEdge = path.edges[i];
+                }
+            return usable;
         }
         // Simple check for existence
         private static bool indexInPathList(List<SWPath> l, int index)
         {
             bool found = false;
-            Parallel.ForEach(l, walkNode =>
-                {
-                    if (walkNode.c_index == index)
-                        found = true;
-                });
-            return found;
+            for (int i = 0; i < l.Count(); i++)
+            {
+                if (l[i].c_index == index)
+                    return true;
+            }
+            return false;
+            /*    Parallel.ForEach(l, walkNode =>
+                    {
+                        if (walkNode.c_index == index)
+                            found = true;
+                    });
+            return found;*/
         }
 
         // Total weight of the graph
