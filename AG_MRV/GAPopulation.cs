@@ -17,20 +17,51 @@ namespace AG_MRV
         /** Initializes GAPopulation with <size> genomes. */
         public static void InitializePopulation(int size, bool createGenes)
         {
+            // Initialize GAPopulation
             bestSolution = null;
             m_length = size;
             generation = new GAGenome[m_length];
             bestSolution = null;
 
+            // Mutation population:
+            //   Because finding a random solution takes a long while,
+            //     once a solution is found, mutate it to add as the next
+            //     <mutationPopulation> solutions.
+            //   This makes each new population have (size/mutationPopulation)
+            //     100% randomized solutions.
+            int mutationPopulation = 8;
+
             Console.WriteLine("Creating Initial Population");
 
-            for (int i = 0; i < m_length; i++)
+            // Generates random solutions
+            for (int i = 0; i < m_length; i+=(mutationPopulation))
             {
+                // Log
                 Console.Write("  +" + (i + 1) + ": ");
+                // Generate random solution
                 generation[i] = new GAGenome(GeneticAlgorithm.genome_size, createGenes);
+                // Log
                 Program.current_iteration.mean_initial_population_value += generation[i].value;
                 Console.WriteLine(generation[i].value);
+
+                // Generate <mutationPopulation> mutations
+                for (int j = 1; j < mutationPopulation; j++)
+                {
+                    // Log
+                    Console.Write("  +" + (i + j + 1) + " (m: ");
+                    // Copy from 100% random solution
+                    generation[i + j] = new GAGenome(generation[i]);
+                    // Mutates a random number of times (3-5)
+                    int r = (int)(3 * (1 + GeneticAlgorithm.random_factory.NextDouble()));
+                    for (int ri = 0; ri < r; ri++ )
+                        generation[i + j].mutate(true);
+                    // Log
+                    Program.current_iteration.mean_initial_population_value += generation[i + j].value;
+                    Console.WriteLine(r + "): " + generation[i + j].value);
+                }
+
             }
+            // Finish the calculation
             Program.current_iteration.mean_initial_population_value = Program.current_iteration.mean_initial_population_value / (float)m_length;
         }
 
@@ -52,7 +83,7 @@ namespace AG_MRV
             GAGenome[] eliteChildren = new GAGenome[GeneticAlgorithm.elite_child_count];
             for (int i = 0; i < GeneticAlgorithm.elite_child_count; i++)
                 eliteChildren[i] = generation[i];
-            //Console.Write("");
+
             // Joins both lists as new generation, with mutation on both
             generation = new GAGenome[children.Length + eliteChildren.Length];
             int it = 0;
@@ -131,7 +162,6 @@ namespace AG_MRV
 
         /** Crossover (reproduction)
          * Algorithm: Modified 2-Point Crossover
-         *    Also known as Ordered Crossover Operation
          * It generates the same number of parents*/
         private static GAGenome[] crossOver(GAGenome[] parents)
         {
@@ -149,11 +179,20 @@ namespace AG_MRV
                     newG1 = new GAGenome(parents[i]);
                     newG2 = new GAGenome(parents[i + (child_count / 2)]);
                     // Select points
-                    int p1 = (GeneticAlgorithm.random_factory.Next(0, GeneticAlgorithm.genome_size-1));
+                    int p1 = (GeneticAlgorithm.random_factory.Next(0, GeneticAlgorithm.genome_size));
                     int p2 = (GeneticAlgorithm.random_factory.Next(p1, GeneticAlgorithm.genome_size));
 
-                    // Change
-                    for (int j = p1; j <= p2; j++)
+                    // All maps of all (nodes that will change -> all nodes that will change) are discarded
+                    for (int a = p1; a < p2; a++)
+                        for (int b = p2; b < p2; b++)
+                        {
+                            newG1.maps[a, b] = new SWMapping();
+                            newG1.maps[b, a] = new SWMapping();
+                            newG2.maps[a, b] = new SWMapping();
+                            newG2.maps[b, a] = new SWMapping();
+                        }
+                    // Change nodes
+                    for (int j = p1; j < p2; j++)
                     {
                         if (!newG2.containsGene(parents[i].genes[j]))
                             newG2.genes[j] = parents[i].genes[j];

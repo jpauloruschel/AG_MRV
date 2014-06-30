@@ -61,8 +61,8 @@ namespace AG_MRV
 
         static void Main(string[] args)
         {
-            int[] i_population = { 40, 80, 160 };
-            float[] i_mutation_rate = { 0.06f, 0.08f, 0.12f };
+            int[] i_population = { 40, 64, 80 };
+            float[] i_mutation_rate = { 0.06f, 0.08f };
 
             // This text is added only once to the file.
             if (!File.Exists(path))
@@ -74,8 +74,16 @@ namespace AG_MRV
                 }
             }
 
-            // Read from Standard Input the problem
-            //string input_substrate = Console.ReadLine();
+            StreamReader sr_substrate = new StreamReader("sub.gtt");
+            string txt_substrate = sr_substrate.ReadToEnd();
+            sr_substrate.Close();
+            StreamReader sr_virtual = new StreamReader("vir.gtt");
+            string txt_virtual = sr_virtual.ReadToEnd();
+            sr_virtual.Close();
+            Console.WriteLine("Loading Substrate Graph...");
+            SwiftGraph graph_substrate = new SwiftGraph(txt_substrate);
+            Console.WriteLine("\nLoading Virtual Graph...");
+            SwiftGraph graph_virtual = new SwiftGraph(txt_virtual);
 
             List<IterationResult> iterationsResults;
 
@@ -108,23 +116,12 @@ namespace AG_MRV
                     Console.WriteLine("    Mutation Rate: " + mutation_rate);
                     Console.WriteLine("  -> Solving ...");
 
-                    // 10 times
-                    for (int it = 0; it < 10; it++)
+                    // 4 times
+                    for (int it = 0; it < 4; it++)
                     {
                         current_iteration = new IterationResult(0,0,0);
 
                         Console.WriteLine("\n  -> It " + it);
-                        StreamReader sr_substrate = new StreamReader("sub.gtt");
-                        string txt_substrate = sr_substrate.ReadToEnd();
-                        sr_substrate.Close();
-                        StreamReader sr_virtual = new StreamReader("vir.gtt");
-                        string txt_virtual = sr_virtual.ReadToEnd();
-                        sr_virtual.Close();
-
-                        Console.WriteLine("Loading Substrate Graph...");
-                        SwiftGraph graph_substrate = new SwiftGraph(txt_substrate);
-                        Console.WriteLine("\nLoading Virtual Graph...");
-                        SwiftGraph graph_virtual = new SwiftGraph(txt_virtual);
 
                         Stopwatch watch = Stopwatch.StartNew();
 

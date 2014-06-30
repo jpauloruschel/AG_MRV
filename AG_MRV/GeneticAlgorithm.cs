@@ -39,6 +39,7 @@ namespace AG_MRV
             GeneticAlgorithm.genome_size = graph_virtual.nodes.Length;
             GeneticAlgorithm.elite_child_count = elite_child_count;
             GAGenome.MutationRate = mutation_rate;
+            GAGenome.accMutationRate = mutation_rate;
 
             // Initializes the population - random and viable genes
             GAPopulation.InitializePopulation(populationSize, true);
